@@ -253,7 +253,7 @@ void BobbyRayPurchaseEventCallback(const UINT8 ubOrderID)
 			while (ubItemsDelivered)
 			{
 				// treat 0s as 1s :-)
-				const UINT8 ubTempNumItems = __min(ubItemsDelivered, __max(1, GCM->getItem(usItem)->getPerPocket()));
+				const UINT8 ubTempNumItems = std::clamp(ubItemsDelivered, (uint8_t) 1, GCM->getItem(usItem)->getPerPocket());
 				CreateItems(usItem, purchase->bItemQuality, ubTempNumItems, &Object);
 
 				// stack as many as possible
@@ -993,7 +993,7 @@ static void DropOffItemsInDestination(UINT8 ubOrderNum, const ShippingDestinatio
 		while ( ubItemsDelivered )
 		{
 			// treat 0s as 1s :-)
-			ubTempNumItems = __min( ubItemsDelivered, __max( 1, GCM->getItem(usItem )->getPerPocket() ) );
+			ubTempNumItems = std::clamp(ubItemsDelivered, (uint8_t) 1, GCM->getItem(usItem)->getPerPocket());
 			CreateItems( usItem, gpNewBobbyrShipments[ ubOrderNum ].BobbyRayPurchase[i].bItemQuality, ubTempNumItems, &Object );
 
 			// stack as many as possible

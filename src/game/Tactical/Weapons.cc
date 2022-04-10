@@ -1037,7 +1037,7 @@ static void UseBlade(SOLDIERTYPE* const pSoldier, INT16 const sTargetGridNo)
 	INT32          iImpact, iImpactForCrits;
 	BOOLEAN        fGonnaHit = FALSE;
 	UINT16         usExpGain = 0;
-	INT8           bMaxDrop;
+	int            bMaxDrop;
 	BOOLEAN        fSurpriseAttack;
 
 	// Deduct points!
@@ -1102,10 +1102,8 @@ static void UseBlade(SOLDIERTYPE* const pSoldier, INT16 const sTargetGridNo)
 				bMaxDrop = (iImpact / 20);
 
 				// the duller they get, the slower they get any worse...
-				bMaxDrop = __min( bMaxDrop, pSoldier->inv[ pSoldier->ubAttackingHand ].bStatus[ 0 ] / 10 );
-
 				// as long as its still > USABLE, it drops another point 1/2 the time
-				bMaxDrop = __max( bMaxDrop, 2 );
+				bMaxDrop = std::clamp(bMaxDrop, 2, pSoldier->inv[pSoldier->ubAttackingHand].bStatus[0] / 10);
 
 				pSoldier->inv[ pSoldier->ubAttackingHand ].bStatus[ 0 ] -= (INT8) Random( bMaxDrop );     // 0 to (maxDrop - 1)
 			}
@@ -2338,11 +2336,7 @@ UINT32 CalcChanceToHitGun(SOLDIERTYPE *pSoldier, UINT16 sGridNo, UINT8 ubAimTime
 			iScopeBonus = (iScopeBonus * WEAPON_STATUS_MOD(pInHand->bAttachStatus[bAttachPos])) / 100;
 
 			// reduce effective range by the bonus obtained from the scope
-			iSightRange -= iScopeBonus;
-			if (iSightRange < 1)
-			{
-				iSightRange = 1;
-			}
+			iSightRange = std::max(iSightRange - iScopeBonus, 1);
 		}
 
 		bAttachPos = FindAttachment( pInHand, LASERSCOPE );
