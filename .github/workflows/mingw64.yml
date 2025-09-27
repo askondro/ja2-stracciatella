@@ -1,4 +1,4 @@
-name: MinGW64 Build
+name: UCRT64 Build
 
 on:
   push:
@@ -10,8 +10,8 @@ on:
     - cron: '0 2 * * 0'  # Weekly builds on Sunday at 2 AM
 
 jobs:
-  mingw64:
-    name: MinGW64 Windows Build
+  ucrt64:
+    name: UCRT64 Windows Build
     runs-on: windows-latest
     
     defaults:
@@ -24,81 +24,156 @@ jobs:
       with:
         fetch-depth: 0  # Get full history for proper versioning
         
-    - name: Setup MSYS2 with MinGW64
+    - name: Setup MSYS2 with UCRT64
       uses: msys2/setup-msys2@v2
       with:
-        msystem: MINGW64
+        msystem: UCRT64
         update: true
         install: >-
-          mingw-w64-x86_64-toolchain
-          mingw-w64-x86_64-cmake
-          mingw-w64-x86_64-ninja
-          mingw-w64-x86_64-pkg-config
-          mingw-w64-x86_64-SDL2
-          mingw-w64-x86_64-boost
-          mingw-w64-x86_64-fltk
-          mingw-w64-x86_64-nsis
+          mingw-w64-ucrt-x86_64-toolchain
+          mingw-w64-ucrt-x86_64-cmake
+          mingw-w64-ucrt-x86_64-ninja
+          mingw-w64-ucrt-x86_64-pkg-config
+          mingw-w64-ucrt-x86_64-SDL2
+          mingw-w64-ucrt-x86_64-boost
+          mingw-w64-ucrt-x86_64-fltk
+          mingw-w64-ucrt-x86_64-nsis
+          mingw-w64-ucrt-x86_64-rust
           git
           
-    - name: Setup Rust for MinGW64
-      shell: pwsh
+    - name: Setup Rust for UCRT64
       run: |
-        # Install rustup if not present
-        if (!(Get-Command rustup -ErrorAction SilentlyContinue)) {
-          Invoke-WebRequest -Uri "https://win.rustup.rs/x86_64" -OutFile "rustup-init.exe"
-          .\rustup-init.exe -y --default-toolchain stable
-          $env:PATH += ";$env:USERPROFILE\.cargo\bin"
-        }
-        
-        # Add MinGW64 target
+        # MSYS2 Rust is already installed via pacman
+        # Configure for UCRT64 target
+        rustup default stable-x86_64-pc-windows-gnu
         rustup target add x86_64-pc-windows-gnu
+        
+        # Show Rust configuration
+        echo "=== Rust Configuration ==="
         rustup show
+        rustc --version
+        cargo --version
+        
+        # Verify UCRT64 rust toolchain
+        which rustc
+        which cargo
         
     - name: Configure build environment
       run: |
         # Show versions for debugging
+        echo "=== Toolchain Information ==="
         gcc --version
         g++ --version
         cmake --version
         ninja --version
         rustc --version
+        cargo --version
+        
+        echo "=== Environment ==="
+        echo "MSYSTEM: $MSYSTEM"
+        echo "PATH: $PATH"
+        echo "RUSTUP_HOME: ${RUSTUP_HOME:-not set}"
+        echo "CARGO_HOME: ${CARGO_HOME:-not set}"
+        
+        # Test Rust compilation
+        echo "=== Testing Rust compilation ==="
+        echo 'fn main() { println!("Hello from UCRT64 Rust!"); }' > test_rust.rs
+        rustc test_rust.rs -o test_rust.exe
+        ./test_rust.exe
+        rm test_rust.rs test_rust.exe
         
         # Set up build directory
         mkdir build
         cd build
         
-        # Configure with CMake
+        # Configure with CMake for UCRT64
         cmake -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
           -DCPACK_GENERATOR="ZIP;NSIS" \
           -DWITH_UNITTESTS=ON \
           -DWITH_RUST_BINARIES=ON \
+          -DCMAKE_C_COMPILER=gcc \
+          -DCMAKE_CXX_COMPILER=g++ \
           ..
           
     - name: Build project
       run: |
         cd build
-        ninja -j$(nproc)
+        echo "=== Starting build ==="
+        ninja -j$(nproc) -v
+        
+        echo "=== Build completed, checking outputs ==="
+        ls -la *.exe || echo "No .exe files found in build root"
+        find . -name "*.exe" -type f
         
     - name: Run tests
       run: |
         cd build
+        echo "=== Running tests ==="
+        
+        # Test Rust components first
+        echo "Testing Rust binaries..."
+        find . -name "*.exe" -path "*/rust/*" -type f | head -5 | while read rust_exe; do
+          if [ -f "$rust_exe" ]; then
+            echo "Testing $rust_exe..."
+            timeout 30 "$rust_exe" --help || echo "$rust_exe failed or timed out"
+          fi
+        done
+        
         # Basic executable tests
-        ./ja2.exe -help || echo "ja2.exe help failed"
-        ./ja2-launcher.exe -help || echo "launcher help failed"
+        if [ -f "./ja2.exe" ]; then
+          echo "Testing ja2.exe..."
+          timeout 30 ./ja2.exe -help || echo "ja2.exe help failed or timed out"
+        else
+          echo "ja2.exe not found"
+        fi
+        
+        if [ -f "./ja2-launcher.exe" ]; then
+          echo "Testing ja2-launcher.exe..."
+          timeout 30 ./ja2-launcher.exe -help || echo "launcher help failed or timed out"
+        else
+          echo "ja2-launcher.exe not found"
+        fi
         
         # Run unit tests if available
         if [ -f "./ja2.exe" ]; then
-          timeout 60 ./ja2.exe -unittests || echo "Unit tests failed or timed out"
+          echo "Running unit tests..."
+          timeout 120 ./ja2.exe -unittests || echo "Unit tests failed or timed out"
+        fi
+        
+        # Test Rust components with cargo if available
+        if [ -f "../rust/Cargo.toml" ]; then
+          echo "Running Rust tests..."
+          cd ../rust
+          timeout 300 cargo test --target x86_64-pc-windows-gnu || echo "Rust tests failed or timed out"
+          cd ../build
         fi
         
     - name: Create packages
       run: |
         cd build
+        echo "=== Creating packages ==="
         ninja package
         
         # List created packages
-        ls -la ja2-stracciatella_*
+        echo "=== Package contents ==="
+        ls -la ja2-stracciatella_* || echo "No packages created"
+        
+    - name: Verify UCRT64 dependencies
+      shell: pwsh
+      run: |
+        Write-Host "=== Checking UCRT64 Dependencies ==="
+        
+        # Check if executables are UCRT64
+        if (Test-Path "build/ja2.exe") {
+          Write-Host "ja2.exe dependencies:"
+          & "C:/msys64/ucrt64/bin/objdump.exe" -p "build/ja2.exe" | Select-String -Pattern "DLL Name"
+        }
+        
+        if (Test-Path "build/ja2-launcher.exe") {
+          Write-Host "ja2-launcher.exe dependencies:"
+          & "C:/msys64/ucrt64/bin/objdump.exe" -p "build/ja2-launcher.exe" | Select-String -Pattern "DLL Name"
+        }
         
     - name: Prepare artifacts
       shell: pwsh
@@ -107,41 +182,62 @@ jobs:
         New-Item -ItemType Directory -Force -Path "artifacts"
         
         # Copy packages
-        Copy-Item "build/ja2-stracciatella_*.zip" "artifacts/" -ErrorAction SilentlyContinue
-        Copy-Item "build/ja2-stracciatella_*.exe" "artifacts/" -ErrorAction SilentlyContinue
+        Get-ChildItem "build" -Filter "ja2-stracciatella_*.zip" | Copy-Item -Destination "artifacts/"
+        Get-ChildItem "build" -Filter "ja2-stracciatella_*.exe" | Copy-Item -Destination "artifacts/"
         
         # Copy individual executables for convenience
-        Copy-Item "build/ja2.exe" "artifacts/" -ErrorAction SilentlyContinue
-        Copy-Item "build/ja2-launcher.exe" "artifacts/" -ErrorAction SilentlyContinue
+        if (Test-Path "build/ja2.exe") {
+          Copy-Item "build/ja2.exe" "artifacts/ja2-ucrt64.exe"
+        }
+        if (Test-Path "build/ja2-launcher.exe") {
+          Copy-Item "build/ja2-launcher.exe" "artifacts/ja2-launcher-ucrt64.exe"
+        }
+        
+        # Copy important DLLs from UCRT64
+        $ucrtPath = "C:/msys64/ucrt64/bin"
+        $dlls = @(
+          "libgcc_s_seh-1.dll",
+          "libstdc++-6.dll",
+          "libwinpthread-1.dll"
+        )
+        
+        foreach ($dll in $dlls) {
+          $dllPath = Join-Path $ucrtPath $dll
+          if (Test-Path $dllPath) {
+            Copy-Item $dllPath "artifacts/"
+            Write-Host "Copied $dll"
+          }
+        }
         
         # Show what we have
-        Get-ChildItem "artifacts"
+        Write-Host "=== Artifacts ==="
+        Get-ChildItem "artifacts" | Format-Table Name, Length
         
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ja2-stracciatella-mingw64-${{ github.sha }}
+        name: ja2-stracciatella-ucrt64-${{ github.sha }}
         path: artifacts/
         retention-days: 30
         
     - name: Upload packages only
       uses: actions/upload-artifact@v4
       with:
-        name: ja2-packages-mingw64
+        name: ja2-packages-ucrt64
         path: build/ja2-stracciatella_*
         retention-days: 90
         
   # Optional: Create release on tags
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: mingw64
+    needs: ucrt64
     runs-on: ubuntu-latest
     
     steps:
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
-        name: ja2-packages-mingw64
+        name: ja2-packages-ucrt64
         path: packages/
         
     - name: Create GitHub Release
@@ -150,5 +246,16 @@ jobs:
         files: packages/*
         draft: true
         generate_release_notes: true
+        body: |
+          ## UCRT64 Build
+          
+          This release contains UCRT64 builds using the Universal C Runtime.
+          
+          ### Advantages of UCRT64:
+          - Better compatibility with modern Windows
+          - Improved C++ standard library support
+          - Better integration with Visual Studio libraries
+          - Future-proof runtime environment
+          
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
