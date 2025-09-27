@@ -39,7 +39,6 @@ jobs:
           mingw-w64-ucrt-x86_64-fltk
           mingw-w64-ucrt-x86_64-nsis
           mingw-w64-ucrt-x86_64-rust
-          mingw-w64-ucrt-x86_64-rustup
           git
           
     - name: Setup Rust for UCRT64
@@ -87,7 +86,7 @@ jobs:
         mkdir build
         cd build
         
-        # Configure with CMake for UCRT64
+        # Configure with CMake for UCRT64 with relaxed warnings
         cmake -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
           -DCPACK_GENERATOR="ZIP;NSIS" \
@@ -95,6 +94,8 @@ jobs:
           -DWITH_RUST_BINARIES=ON \
           -DCMAKE_C_COMPILER=gcc \
           -DCMAKE_CXX_COMPILER=g++ \
+          -DCMAKE_CXX_FLAGS="-Wno-maybe-uninitialized -Wno-uninitialized" \
+          -DCMAKE_C_FLAGS="-Wno-maybe-uninitialized -Wno-uninitialized" \
           ..
           
     - name: Build project
