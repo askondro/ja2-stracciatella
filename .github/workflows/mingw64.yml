@@ -39,6 +39,7 @@ jobs:
           mingw-w64-ucrt-x86_64-fltk
           mingw-w64-ucrt-x86_64-nsis
           mingw-w64-ucrt-x86_64-rust
+          mingw-w64-ucrt-x86_64-rustup
           git
           
     - name: Setup Rust for UCRT64
