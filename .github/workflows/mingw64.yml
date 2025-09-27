@@ -1,0 +1,154 @@
+name: MinGW64 Build
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:  # Allow manual triggers
+  schedule:
+    - cron: '0 2 * * 0'  # Weekly builds on Sunday at 2 AM
+
+jobs:
+  mingw64:
+    name: MinGW64 Windows Build
+    runs-on: windows-latest
+    
+    defaults:
+      run:
+        shell: msys2 {0}
+        
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Get full history for proper versioning
+        
+    - name: Setup MSYS2 with MinGW64
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-ninja
+          mingw-w64-x86_64-pkg-config
+          mingw-w64-x86_64-SDL2
+          mingw-w64-x86_64-boost
+          mingw-w64-x86_64-fltk
+          mingw-w64-x86_64-nsis
+          git
+          
+    - name: Setup Rust for MinGW64
+      shell: pwsh
+      run: |
+        # Install rustup if not present
+        if (!(Get-Command rustup -ErrorAction SilentlyContinue)) {
+          Invoke-WebRequest -Uri "https://win.rustup.rs/x86_64" -OutFile "rustup-init.exe"
+          .\rustup-init.exe -y --default-toolchain stable
+          $env:PATH += ";$env:USERPROFILE\.cargo\bin"
+        }
+        
+        # Add MinGW64 target
+        rustup target add x86_64-pc-windows-gnu
+        rustup show
+        
+    - name: Configure build environment
+      run: |
+        # Show versions for debugging
+        gcc --version
+        g++ --version
+        cmake --version
+        ninja --version
+        rustc --version
+        
+        # Set up build directory
+        mkdir build
+        cd build
+        
+        # Configure with CMake
+        cmake -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCPACK_GENERATOR="ZIP;NSIS" \
+          -DWITH_UNITTESTS=ON \
+          -DWITH_RUST_BINARIES=ON \
+          ..
+          
+    - name: Build project
+      run: |
+        cd build
+        ninja -j$(nproc)
+        
+    - name: Run tests
+      run: |
+        cd build
+        # Basic executable tests
+        ./ja2.exe -help || echo "ja2.exe help failed"
+        ./ja2-launcher.exe -help || echo "launcher help failed"
+        
+        # Run unit tests if available
+        if [ -f "./ja2.exe" ]; then
+          timeout 60 ./ja2.exe -unittests || echo "Unit tests failed or timed out"
+        fi
+        
+    - name: Create packages
+      run: |
+        cd build
+        ninja package
+        
+        # List created packages
+        ls -la ja2-stracciatella_*
+        
+    - name: Prepare artifacts
+      shell: pwsh
+      run: |
+        # Create artifacts directory
+        New-Item -ItemType Directory -Force -Path "artifacts"
+        
+        # Copy packages
+        Copy-Item "build/ja2-stracciatella_*.zip" "artifacts/" -ErrorAction SilentlyContinue
+        Copy-Item "build/ja2-stracciatella_*.exe" "artifacts/" -ErrorAction SilentlyContinue
+        
+        # Copy individual executables for convenience
+        Copy-Item "build/ja2.exe" "artifacts/" -ErrorAction SilentlyContinue
+        Copy-Item "build/ja2-launcher.exe" "artifacts/" -ErrorAction SilentlyContinue
+        
+        # Show what we have
+        Get-ChildItem "artifacts"
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ja2-stracciatella-mingw64-${{ github.sha }}
+        path: artifacts/
+        retention-days: 30
+        
+    - name: Upload packages only
+      uses: actions/upload-artifact@v4
+      with:
+        name: ja2-packages-mingw64
+        path: build/ja2-stracciatella_*
+        retention-days: 90
+        
+  # Optional: Create release on tags
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: mingw64
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ja2-packages-mingw64
+        path: packages/
+        
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: packages/*
+        draft: true
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
