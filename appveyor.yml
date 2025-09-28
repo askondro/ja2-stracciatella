@@ -27,6 +27,7 @@ environment:
       MSYSTEM: UCRT64
       CI_TARGET: windows-ucrt64
       CMAKE_GENERATOR: "Ninja"
+      CMAKE_GENERATOR: "Ninja"
 >>>>>>> 40305947d0a3f0c5a2fd6f4f1da7e191d21dd833
 branches:
   only:
@@ -119,3 +120,4 @@ after_test:
 
 artifacts:
   - path: ci-build\ja2-stracciatella_*
+
