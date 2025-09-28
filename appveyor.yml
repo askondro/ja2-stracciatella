@@ -1,7 +1,5 @@
 # validator: https://ci.appveyor.com/tools/validate-yaml
-
 version: "{build}"
-
 environment:
   GCLOUD_CREDENTIALS_SALT:
     secure: "tmDQ9iBheiMMWuKKqA/l7U0kC+S2yFeI05B47pGaHTs="
@@ -20,19 +18,19 @@ environment:
     - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2019
       CMAKE_GENERATOR_PLATFORM: amd64
       CI_TARGET: windows-msvc-amd64
-
+    - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2022
+      MSYSTEM: UCRT64
+      CI_TARGET: windows-ucrt64
+      CMAKE_GENERATOR: "Unix Makefiles"
 branches:
   only:
     - master
     - nightly
     - /\d+\.\d+\.[\dx]+/
-
 matrix:
   fast_finish: true
-
 clone_folder: c:\projects\ja2-stracciatella
 clone_depth: 1
-
 cache:
   # rust and cargo
   - '%USERPROFILE%\.cargo\bin\ -> rust\Cargo.lock, rust\Cargo.toml'
@@ -45,14 +43,13 @@ cache:
   # sccache binary
   - C:\ProgramData\chocolatey\bin -> appveyor.yml
   - C:\ProgramData\chocolatey\lib -> appveyor.yml
-
+  # MSYS2 cache
+  - 'C:\msys64\var\cache\pacman\pkg -> appveyor.yml'
 skip_commits:
   # appveyor only searches for tags in the first line by default
   message: /\[ci skip\]/
-
 init:
   - ps: $env:BUILD_TYPE = "Debug";
-
   - ps: $env:CI_REF = "refs/heads/${env:APPVEYOR_REPO_BRANCH}";
   - ps: >
       if (Test-Path Env:\APPVEYOR_PULL_REQUEST_NUMBER) {
@@ -73,42 +70,84 @@ init:
         $env:CI_REF = "refs/tags/${env:APPVEYOR_REPO_TAG_NAME}";
       }
       true;
-
-  - ps: $env:BUILD_SWITCHES = "-DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DVERSION_TAG=%VERSION_TAG% -DCPACK_GENERATOR=ZIP;NSIS -DCMAKE_SYSTEM_VERSION=10.0 -DCMAKE_TOOLCHAIN_FILE=./cmake/toolchain-msvc.cmake"
+  - ps: >
+      if ("$env:MSYSTEM" -eq "UCRT64") {
+        $env:BUILD_SWITCHES = "-DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DVERSION_TAG=%VERSION_TAG% -DCPACK_GENERATOR=ZIP";
+      } else {
+        $env:BUILD_SWITCHES = "-DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DVERSION_TAG=%VERSION_TAG% -DCPACK_GENERATOR=ZIP;NSIS -DCMAKE_SYSTEM_VERSION=10.0 -DCMAKE_TOOLCHAIN_FILE=./cmake/toolchain-msvc.cmake";
+      }
+      true;
   - ps: >
       if ("$env:BUILD_TYPE" -eq "Release") {
         $env:BUILD_SWITCHES = "${env:BUILD_SWITCHES} -DWITH_EDITOR_SLF=ON";
       }
       true;
-
   - cmd: echo "%CMAKE_GENERATOR% %CMAKE_GENERATOR_PLATFORM%"
   - cmd: echo "%BUILD_SWITCHES%"
-
 install:
-  - cmd: bash .ci\ci-setup.sh
+  - ps: >
+      if ("$env:MSYSTEM" -eq "UCRT64") {
+        # Update MSYS2 and install required packages for UCRT64
+        C:\msys64\usr\bin\bash.exe -lc "pacman -Syu --noconfirm"
+        C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-rust"
+      } else {
+        cmd /c bash .ci\ci-setup.sh
+      }
+      true;
   # Seems like env variables set by bash are not taken over to ps/cmd
-  - ps: $env:PATH = "${env:PATH};${env:USERPROFILE}\.cargo\bin;${env:USERPROFILE}\google-cloud-sdk\bin"
-
+  - ps: >
+      if ("$env:MSYSTEM" -eq "UCRT64") {
+        $env:PATH = "C:\msys64\ucrt64\bin;C:\msys64\usr\bin;${env:PATH};${env:USERPROFILE}\.cargo\bin;${env:USERPROFILE}\google-cloud-sdk\bin"
+      } else {
+        $env:PATH = "${env:PATH};${env:USERPROFILE}\.cargo\bin;${env:USERPROFILE}\google-cloud-sdk\bin"
+      }
+      true;
 before_build:
   - cmd: if not exist ci-build md ci-build
   - cmd: cd ci-build
-  - cmd: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" %CMAKE_GENERATOR_PLATFORM%'
-  - cmd: cmake -G %CMAKE_GENERATOR% %BUILD_SWITCHES% ..
+  - ps: >
+      if ("$env:MSYSTEM" -ne "UCRT64") {
+        cmd /c '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" %CMAKE_GENERATOR_PLATFORM%'
+      }
+      true;
+  - ps: >
+      if ("$env:MSYSTEM" -eq "UCRT64") {
+        C:\msys64\usr\bin\bash.exe -lc "cd /c/projects/ja2-stracciatella/ci-build && cmake -G '$env:CMAKE_GENERATOR' $env:BUILD_SWITCHES .."
+      } else {
+        cmd /c cmake -G %CMAKE_GENERATOR% %BUILD_SWITCHES% ..
+      }
+      true;
   - cmd: type CMakeCache.txt
-
 build_script:
-  - ps: cmake --build c:\projects\ja2-stracciatella\ci-build --target all --config ${env:BUILD_TYPE}
-
+  - ps: >
+      if ("$env:MSYSTEM" -eq "UCRT64") {
+        C:\msys64\usr\bin\bash.exe -lc "cd /c/projects/ja2-stracciatella/ci-build && cmake --build . --target all --config $env:BUILD_TYPE"
+      } else {
+        cmake --build c:\projects\ja2-stracciatella\ci-build --target all --config ${env:BUILD_TYPE}
+      }
+      true;
 test_script:
-  - cmd: cmake --build . --target cargo-test
-  - cmd: ja2.exe -unittests
-  - cmd: ja2-launcher.exe -help
-
+  - ps: >
+      if ("$env:MSYSTEM" -eq "UCRT64") {
+        C:\msys64\usr\bin\bash.exe -lc "cd /c/projects/ja2-stracciatella/ci-build && cmake --build . --target cargo-test"
+        C:\msys64\usr\bin\bash.exe -lc "cd /c/projects/ja2-stracciatella/ci-build && ./ja2.exe -unittests"
+        C:\msys64\usr\bin\bash.exe -lc "cd /c/projects/ja2-stracciatella/ci-build && ./ja2-launcher.exe -help"
+      } else {
+        cmd /c cmake --build . --target cargo-test
+        cmd /c ja2.exe -unittests
+        cmd /c ja2-launcher.exe -help
+      }
+      true;
 after_test:
   - cmd: sccache -s
-  - ps: cmake --build c:\projects\ja2-stracciatella\ci-build --target package
+  - ps: >
+      if ("$env:MSYSTEM" -eq "UCRT64") {
+        C:\msys64\usr\bin\bash.exe -lc "cd /c/projects/ja2-stracciatella/ci-build && cmake --build . --target package"
+      } else {
+        cmake --build c:\projects\ja2-stracciatella\ci-build --target package
+      }
+      true;
   - ps: cd c:\projects\ja2-stracciatella
   - cmd: bash .ci\ci-publish.sh
-
 artifacts:
   - path: ci-build\ja2-stracciatella_*
