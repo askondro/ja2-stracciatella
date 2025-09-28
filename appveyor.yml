@@ -21,7 +21,7 @@ environment:
     - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2022
       MSYSTEM: UCRT64
       CI_TARGET: windows-ucrt64
-      CMAKE_GENERATOR: "Unix Makefiles"
+      CMAKE_GENERATOR: "Ninja"
 branches:
   only:
     - master
