@@ -1,7 +1,5 @@
 # validator: https://ci.appveyor.com/tools/validate-yaml
-
 version: "{build}"
-
 environment:
   GCLOUD_CREDENTIALS_SALT:
     secure: "tmDQ9iBheiMMWuKKqA/l7U0kC+S2yFeI05B47pGaHTs="
@@ -20,19 +18,17 @@ environment:
     - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2019
       CMAKE_GENERATOR_PLATFORM: amd64
       CI_TARGET: windows-msvc-amd64
-
+    - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2022
+      CI_TARGET: windows-ucrt64
 branches:
   only:
     - master
     - nightly
     - /\d+\.\d+\.[\dx]+/
-
 matrix:
   fast_finish: true
-
 clone_folder: c:\projects\ja2-stracciatella
 clone_depth: 1
-
 cache:
   # rust and cargo
   - '%USERPROFILE%\.cargo\bin\ -> rust\Cargo.lock, rust\Cargo.toml'
@@ -45,14 +41,11 @@ cache:
   # sccache binary
   - C:\ProgramData\chocolatey\bin -> appveyor.yml
   - C:\ProgramData\chocolatey\lib -> appveyor.yml
-
 skip_commits:
   # appveyor only searches for tags in the first line by default
   message: /\[ci skip\]/
-
 init:
   - ps: $env:BUILD_TYPE = "Debug";
-
   - ps: $env:CI_REF = "refs/heads/${env:APPVEYOR_REPO_BRANCH}";
   - ps: >
       if (Test-Path Env:\APPVEYOR_PULL_REQUEST_NUMBER) {
@@ -73,42 +66,74 @@ init:
         $env:CI_REF = "refs/tags/${env:APPVEYOR_REPO_TAG_NAME}";
       }
       true;
-
   - ps: $env:BUILD_SWITCHES = "-DCMAKE_BUILD_TYPE=%BUILD_TYPE% -DVERSION_TAG=%VERSION_TAG% -DCPACK_GENERATOR=ZIP;NSIS -DCMAKE_SYSTEM_VERSION=10.0 -DCMAKE_TOOLCHAIN_FILE=./cmake/toolchain-msvc.cmake"
   - ps: >
       if ("$env:BUILD_TYPE" -eq "Release") {
         $env:BUILD_SWITCHES = "${env:BUILD_SWITCHES} -DWITH_EDITOR_SLF=ON";
       }
       true;
-
   - cmd: echo "%CMAKE_GENERATOR% %CMAKE_GENERATOR_PLATFORM%"
   - cmd: echo "%BUILD_SWITCHES%"
-
 install:
   - cmd: bash .ci\ci-setup.sh
   # Seems like env variables set by bash are not taken over to ps/cmd
   - ps: $env:PATH = "${env:PATH};${env:USERPROFILE}\.cargo\bin;${env:USERPROFILE}\google-cloud-sdk\bin"
-
 before_build:
   - cmd: if not exist ci-build md ci-build
   - cmd: cd ci-build
   - cmd: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall.bat" %CMAKE_GENERATOR_PLATFORM%'
   - cmd: cmake -G %CMAKE_GENERATOR% %BUILD_SWITCHES% ..
   - cmd: type CMakeCache.txt
-
 build_script:
   - ps: cmake --build c:\projects\ja2-stracciatella\ci-build --target all --config ${env:BUILD_TYPE}
-
 test_script:
   - cmd: cmake --build . --target cargo-test
   - cmd: ja2.exe -unittests
   - cmd: ja2-launcher.exe -help
-
 after_test:
   - cmd: sccache -s
   - ps: cmake --build c:\projects\ja2-stracciatella\ci-build --target package
   - ps: cd c:\projects\ja2-stracciatella
   - cmd: bash .ci\ci-publish.sh
+
+for:
+  - matrix:
+      only:
+        - CI_TARGET: windows-ucrt64
+    init:
+      - cmd: set MSYSTEM=UCRT64
+    install:
+      - cmd: >-
+          C:\msys64\usr\bin\bash -lc "
+          pacman -S --noconfirm
+          mingw-w64-ucrt-x86_64-toolchain
+          mingw-w64-ucrt-x86_64-cmake
+          mingw-w64-ucrt-x86_64-ninja
+          mingw-w64-ucrt-x86_64-rust
+          mingw-w64-ucrt-x86_64-SDL2"
+    before_build:
+      - cmd: echo "UCRT64 build"
+    build_script:
+      - cmd: >-
+          set MSYSTEM=UCRT64 &&
+          C:\msys64\usr\bin\bash -lc "
+          cd \"$APPVEYOR_BUILD_FOLDER\" &&
+          mkdir -p ci-build && cd ci-build &&
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release .. &&
+          ninja"
+    test_script:
+      - cmd: >-
+          set MSYSTEM=UCRT64 &&
+          C:\msys64\usr\bin\bash -lc "
+          cd \"$APPVEYOR_BUILD_FOLDER/ci-build\" &&
+          ./ja2.exe -unittests &&
+          ./ja2-launcher.exe -help"
+    after_test:
+      - cmd: >-
+          set MSYSTEM=UCRT64 &&
+          C:\msys64\usr\bin\bash -lc "
+          cd \"$APPVEYOR_BUILD_FOLDER/ci-build\" &&
+          cmake --build . --target package"
 
 artifacts:
   - path: ci-build\ja2-stracciatella_*
