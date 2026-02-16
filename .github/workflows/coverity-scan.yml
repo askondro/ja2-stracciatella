@@ -7,7 +7,7 @@ on:
 env:
   COVERITY_SCAN_TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
   COVERITY_SCAN_EMAIL: github@stefanlau.com
-  COVERITY_PROJECT: ja2-stracciatella/ja2-stracciatella
+  COVERITY_PROJECT: askondro/ja2-stracciatella
   COV_TOOLS_DIR: ${{ github.workspace }}/cov-analysis-linux64
   COV_BUILD_DIR: ${{ github.workspace }}/coverity-build
   COV_RESULTS_DIR: cov-int
