@@ -171,6 +171,7 @@ jobs:
           mingw-w64-ucrt-x86_64-ninja
           mingw-w64-ucrt-x86_64-rust
           mingw-w64-ucrt-x86_64-SDL2
+          mingw-w64-ucrt-x86_64-fltk
 
     - name: Cache Rust deps and build output
       uses: actions/cache@v4
