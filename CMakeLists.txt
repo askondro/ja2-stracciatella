@@ -124,6 +124,10 @@ if(MSVC)
         endif()
 	endforeach()
 	set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT "ja2")
+elseif(MINGW)
+    # COFF object files are limited to 65535 sections; heavy template use (sol2)
+    # in debug builds exceeds this.  -Wa,-mbig-obj enables the BigObj PE format.
+    add_compile_options(-Wa,-mbig-obj)
 endif()
 
 ## Build
