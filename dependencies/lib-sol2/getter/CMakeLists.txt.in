@@ -12,11 +12,12 @@ project(getter NONE)
 
 find_program(PATCH_PROGRAM "patch")
 
-# doing it with generator expressions had strange problems
+# Use -i/positional-arg instead of < redirect: ExternalProject does not
+# run commands through a shell, so shell redirection does not work.
 if( PATCH_PROGRAM )
-    set( PATCH_CMD patch )
+    set( PATCH_CMD patch -p1 -i ${CMAKE_CURRENT_SOURCE_DIR}/gcc-15.patch )
 else()
-    set( PATCH_CMD git apply --ignore-whitespace )
+    set( PATCH_CMD git apply --ignore-whitespace -p1 ${CMAKE_CURRENT_SOURCE_DIR}/gcc-15.patch )
 endif()
 
 include(ExternalProject)
@@ -31,5 +32,5 @@ externalproject_add(get-sol2
         BUILD_COMMAND       ""
         INSTALL_COMMAND     ""
         TEST_COMMAND        ""
-    PATCH_COMMAND ${PATCH_CMD} -p1 < ${CMAKE_CURRENT_SOURCE_DIR}/gcc-15.patch
+    PATCH_COMMAND ${PATCH_CMD}
 )
