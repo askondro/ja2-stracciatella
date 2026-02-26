@@ -117,6 +117,7 @@ for:
       - cmd: >-
           set MSYSTEM=UCRT64 &&
           C:\msys64\usr\bin\bash -lc "
+          export PATH=/ucrt64/bin:/usr/bin:$PATH &&
           cd \"$APPVEYOR_BUILD_FOLDER\" &&
           mkdir -p ci-build && cd ci-build &&
           cmake -G Ninja -DCMAKE_BUILD_TYPE=Release .. &&
@@ -125,6 +126,7 @@ for:
       - cmd: >-
           set MSYSTEM=UCRT64 &&
           C:\msys64\usr\bin\bash -lc "
+          export PATH=/ucrt64/bin:/usr/bin:$PATH &&
           cd \"$APPVEYOR_BUILD_FOLDER/ci-build\" &&
           ./ja2.exe -unittests &&
           ./ja2-launcher.exe -help"
@@ -132,6 +134,7 @@ for:
       - cmd: >-
           set MSYSTEM=UCRT64 &&
           C:\msys64\usr\bin\bash -lc "
+          export PATH=/ucrt64/bin:/usr/bin:$PATH &&
           cd \"$APPVEYOR_BUILD_FOLDER/ci-build\" &&
           cmake --build . --target package"
 
