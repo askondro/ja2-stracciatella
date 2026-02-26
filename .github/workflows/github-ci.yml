@@ -150,6 +150,94 @@ jobs:
         name: artifacts ${{ matrix.cfg.name }}
         path: ${{ github.workspace }}/artifacts
 
+  ci-build-msys2-ucrt64:
+    name: MSYS2 UCRT64 ${{ github.ref }}
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup MSYS2 UCRT64
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        update: true
+        install: >-
+          mingw-w64-ucrt-x86_64-toolchain
+          mingw-w64-ucrt-x86_64-cmake
+          mingw-w64-ucrt-x86_64-ninja
+          mingw-w64-ucrt-x86_64-rust
+          mingw-w64-ucrt-x86_64-SDL2
+
+    - name: Cache Rust deps and build output
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+          ~/.rustup
+        key: msys2-ucrt64-rust-v1-${{ hashFiles('rust') }}
+        restore-keys: |
+          msys2-ucrt64-rust-v1-
+
+    - name: Build
+      run: |
+        set -e
+        set -x
+        if [[ "${{ github.ref }}" == "refs/heads/nightly" ]]; then
+          BUILD_TYPE="ReleaseWithDebInfo"
+          VERSION_TAG="$(date +%Y%m%d)"
+        elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          BUILD_TYPE="ReleaseWithDebInfo"
+          VERSION_TAG=""
+        else
+          BUILD_TYPE="Debug"
+          VERSION_TAG=""
+        fi
+        CONFIGURE_CMD="cmake -G Ninja -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCPACK_GENERATOR=ZIP"
+        if [[ "${BUILD_TYPE}" != "Debug" ]]; then
+          CONFIGURE_CMD="${CONFIGURE_CMD} -DWITH_EDITOR_SLF=ON"
+        fi
+        if [[ -n "${VERSION_TAG}" ]]; then
+          CONFIGURE_CMD="${CONFIGURE_CMD} -DVERSION_TAG=${VERSION_TAG}"
+        fi
+        mkdir -p ci-build
+        cd ci-build
+        ${CONFIGURE_CMD} ..
+        cmake --build . --config ${BUILD_TYPE}
+
+    - name: Run tests
+      run: |
+        cd ci-build
+        cmake --build . --target cargo-test
+        ./ja2.exe -unittests
+        ./ja2-launcher.exe -help
+
+    - name: Package
+      run: |
+        cd ci-build
+        cmake --build . --target package
+
+    - name: Collect artifacts
+      run: |
+        set -e
+        set -x
+        mkdir artifacts
+        for file in ci-build/ja2-stracciatella_*; do
+          cp "${file}" artifacts/
+        done
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: artifacts MSYS2 UCRT64
+        path: ${{ github.workspace }}/artifacts
+
   ci-lint:
     strategy:
       fail-fast: false
