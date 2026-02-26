@@ -386,7 +386,10 @@ static STRUCTURE* CreateStructureFromDB(DB_STRUCTURE_REF const* const pDBStructu
 
 	STRUCTURE* const pStructure = new STRUCTURE{};
 
-	pStructure->fFlags          = pDBStructure->fFlags;
+	// We need to clear the old STRUCTURE_HIDDEN flag, which had the same value
+	// as STRUCTURE_GARADGEDOOR to prevent problems with pathing and opening
+	// or closing doors, see PR #2348 and nightops-maps PR #11.
+	pStructure->fFlags          = pDBStructure->fFlags & ~STRUCTURE_GARAGEDOOR;
 	pStructure->pShape          = &pTile->Shape;
 	pStructure->pDBStructureRef = pDBStructureRef;
 	if (pTile->sPosRelToBase != 0 && ubTileNum == 0)
@@ -409,7 +412,6 @@ static STRUCTURE* CreateStructureFromDB(DB_STRUCTURE_REF const* const pDBStructu
 			pStructure->ubWallOrientation = pDBStructure->ubWallOrientation;
 		}
 	}
-	pStructure->ubVehicleHitLocation = pTile->ubVehicleHitLocation;
 	return pStructure;
 }
 
@@ -606,12 +608,10 @@ BOOLEAN InternalOkayToAddStructureToWorld(INT16 const sBaseGridNo, INT8 const bL
 {
 	CHECKF(pDBStructureRef);
 	CHECKF(pDBStructureRef->pDBStructure);
-	UINT8 const n_tiles = pDBStructureRef->pDBStructure->ubNumberOfTiles;
-	CHECKF(n_tiles > 0);
-	DB_STRUCTURE_TILE const* const* const tiles = pDBStructureRef->ppTile;
-	CHECKF(tiles);
+	auto tiles = pDBStructureRef->Tiles();
+	CHECKF(!tiles.empty());
 
-	for (UINT8 i = 0; i < n_tiles; ++i)
+	for (size_t i = 0; i < tiles.size(); ++i)
 	{
 		INT16 cube_offset;
 		if (!(tiles[i]->fFlags & TILE_ON_ROOF))
@@ -827,12 +827,10 @@ BOOLEAN DeleteStructureFromWorld(STRUCTURE* const structure)
 	bool                const recompile_mps          = gsRecompileAreaLeft != 0 && !(base->fFlags & STRUCTURE_MOBILE);
 	bool                const recompile_extra_radius = recompile_mps && base->fFlags & STRUCTURE_WALLSTUFF; // For doors, yuck
 	GridNo              const base_grid_no           = base->sGridNo;
-	DB_STRUCTURE_TILE** const tile                   = base->pDBStructureRef->ppTile;
-	DB_STRUCTURE_TILE** const end_tile               = tile + base->pDBStructureRef->pDBStructure->ubNumberOfTiles;
 	// Free all the tiles
-	for (DB_STRUCTURE_TILE* const* i = tile; i != end_tile; ++i)
+	for (DB_STRUCTURE_TILE const * tile : base->pDBStructureRef->Tiles())
 	{
-		GridNo const grid_no = base_grid_no + (*i)->sPosRelToBase;
+		GridNo const grid_no = base_grid_no + tile->sPosRelToBase;
 		/* There might be two structures in this tile, one on each level, but we
 		 * just want to delete one on each pass */
 		if (STRUCTURE* const current = FindStructureByID(grid_no, structure_id))
@@ -1247,7 +1245,6 @@ StructureDamageResult DamageStructure(STRUCTURE* const s, UINT8 damage, Structur
 }
 
 
-#define LINE_HEIGHT 20
 void DebugStructurePage1()
 {
 	static const ST::string WallOrientationString[] =
@@ -1490,9 +1487,10 @@ void AddZStripInfoToVObject(HVOBJECT const hVObject, STRUCTURE_FILE_REF const* c
 		//if (pDBStructure != NULL && pDBStructure->ubNumberOfTiles > 1 && !(pDBStructure->fFlags & STRUCTURE_WALLSTUFF) )
 		if (pDBStructure != NULL && pDBStructure->ubNumberOfTiles > 1)
 		{
-			for (UINT8 ubLoop2 = 1; ubLoop2 < pDBStructure->ubNumberOfTiles; ++ubLoop2)
+			auto tiles = pDBStructureRef->Tiles();
+			for (UINT8 ubLoop2 = 1; ubLoop2 < tiles.size(); ++ubLoop2)
 			{
-				if (pDBStructureRef->ppTile[ubLoop2]->sPosRelToBase != 0)
+				if (tiles[ubLoop2]->sPosRelToBase != 0)
 				{
 					// spans multiple tiles! (could be two levels high in one tile)
 					fFound = TRUE;
