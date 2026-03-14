@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /c/msys64/home/askon/devel/ja2-stracciatella/rust/stracciatella/src/*.rs)",
+      "Bash(for dir:*)",
+      "Bash(do echo:*)",
+      "Read(//c/msys64/home/askon/devel/ja2-stracciatella/src/game/**)",
+      "Bash(done)",
+      "Bash(find /c/msys64/home/askon/devel/ja2-stracciatella/docs -type f -name *.md -o -name *.txt -o -name *.rst)",
+      "Bash(grep -l \"int main\\\\|int __main\\\\|WinMain\" /c/msys64/home/askon/devel/ja2-stracciatella/src/game/*.cc)",
+      "Bash(wc -l /c/msys64/home/askon/devel/ja2-stracciatella/src/game/*.cc /c/msys64/home/askon/devel/ja2-stracciatella/src/sgp/*.cc)",
+      "Bash(grep -r \"SDL_[A-Za-z_]*\" src/sgp/*.cc --only-matching)",
+      "Bash(grep -rn \"SDL_.*Event\\\\|SDL_Poll\\\\|SDL_Wait\" src/sgp/*.cc)",
+      "Bash(ls -la src/sgp/MouseSystem*)",
+      "Bash(grep -rn SDL_ src/sgp/*.cc src/sgp/*.h)",
+      "WebFetch(domain:wiki.libsdl.org)",
+      "WebSearch"
+    ]
+  }
+}
