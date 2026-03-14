@@ -1489,6 +1489,36 @@ BOOLEAN CalculateSoldierZPos(const SOLDIERTYPE* pSoldier, UINT8 ubPosType, FLOAT
 	return( TRUE );
 }
 
+FLOAT GetTargetZPosFromStructureHeight(INT16 sGridNo, INT8 bLevel, INT8 bCubeLevel)
+{
+	FLOAT dEndZPos;
+
+	if (bCubeLevel)
+	{
+		// fire at the centre of the cube specified
+		dEndZPos = ((FLOAT)(bCubeLevel + bLevel * PROFILE_Z_SIZE) - 0.5f) * HEIGHT_UNITS_PER_INDEX;
+	}
+	else
+	{
+		INT8 bStructHeight = GetTallestStructureHeight(sGridNo, bLevel == SECOND_LEVEL, TRUE);
+		if (bStructHeight > 0)
+		{
+			// fire at the centre of the cube *one below* the tallest of the tallest structure
+			if (bStructHeight > 1)
+			{
+				bStructHeight--;
+			}
+			dEndZPos = ((FLOAT)(bStructHeight + bLevel * PROFILE_Z_SIZE) - 0.5f) * HEIGHT_UNITS_PER_INDEX;
+		}
+		else
+		{
+			// fire at 1 unit above the level of the ground
+			dEndZPos = (FLOAT)((bLevel * PROFILE_Z_SIZE) * HEIGHT_UNITS_PER_INDEX + 1);
+		}
+	}
+
+	return dEndZPos += CONVERT_PIXELS_TO_HEIGHTUNITS(gpWorldLevelData[sGridNo].sHeight);
+}
 
 INT32 SoldierToSoldierLineOfSightTest(const SOLDIERTYPE* const pStartSoldier, const SOLDIERTYPE* const pEndSoldier, UINT8 ubTileSightLimit, const INT8 bAware)
 {
@@ -2626,6 +2656,14 @@ static UINT8 CalcChanceToGetThrough(BULLET* pBullet)
 				// ground is in the way!
 				return( 0 );
 			}
+			if (pRoofStructure)
+			{
+				if ((qLastZ > qWallHeight && pBullet->qCurrZ < qWallHeight) ||
+					(qLastZ < qWallHeight && pBullet->qCurrZ > qWallHeight))
+				{
+					return( 0 ); // roof collision
+				}
+			}
 			// check for the existence of structures
 			pStructure = pMapElement->pStructureHead;
 			if (pStructure == NULL)
@@ -2778,25 +2816,8 @@ static UINT8 CalcChanceToGetThrough(BULLET* pBullet)
 				{
 					pBullet->qCurrX += pBullet->qIncrX;
 					pBullet->qCurrY += pBullet->qIncrY;
-					if (pRoofStructure)
-					{
-						qLastZ = pBullet->qCurrZ;
-						pBullet->qCurrZ += pBullet->qIncrZ;
-						if ( (qLastZ > qWallHeight && pBullet->qCurrZ < qWallHeight) || (qLastZ < qWallHeight && pBullet->qCurrZ > qWallHeight))
-						{
-							// hit roof!
-							//pBullet->iImpactReduction += CTGTHandleBulletStructureInteraction( pBullet, pRoofStructure );
-							//if (pBullet->iImpactReduction >= pBullet->iImpact)
-							{
-								return( 0 );
-							}
-
-						}
-					}
-					else
-					{
-						pBullet->qCurrZ += pBullet->qIncrZ;
-					}
+					qLastZ = pBullet->qCurrZ; // for roof collision tracking
+					pBullet->qCurrZ += pBullet->qIncrZ;
 					pBullet->iLoop++;
 					pBullet->bLOSIndexX = CONVERT_WITHINTILE_TO_INDEX( FIXEDPT_TO_INT32( pBullet->qCurrX ) % CELL_X_SIZE );
 					pBullet->bLOSIndexY = CONVERT_WITHINTILE_TO_INDEX( FIXEDPT_TO_INT32( pBullet->qCurrY ) % CELL_Y_SIZE );
@@ -2936,8 +2957,6 @@ UINT8 SoldierToSoldierBodyPartChanceToGetThrough(SOLDIERTYPE* const pStartSoldie
 
 UINT8 SoldierToLocationChanceToGetThrough(SOLDIERTYPE* const pStartSoldier, const INT16 sGridNo, const INT8 bLevel, const INT8 bCubeLevel, const SOLDIERTYPE* const target)
 {
-	FLOAT dEndZPos;
-
 	if (pStartSoldier->sGridNo == sGridNo)
 	{
 		return( 0 );
@@ -2951,31 +2970,11 @@ UINT8 SoldierToLocationChanceToGetThrough(SOLDIERTYPE* const pStartSoldier, cons
 	}
 	else
 	{
-		if (bCubeLevel)
-		{
-			// fire at the centre of the cube specified
-			dEndZPos = ( ( (FLOAT) (bCubeLevel + bLevel * PROFILE_Z_SIZE) ) - 0.5f) * HEIGHT_UNITS_PER_INDEX;
-		}
-		else
-		{
-			INT8 const bStructHeight = GetStructureTargetHeight(sGridNo, bLevel == 1);
-			if (bStructHeight > 0)
-			{
-				// fire at the centre of the cube of the tallest structure
-				dEndZPos = ((FLOAT) (bStructHeight + bLevel * PROFILE_Z_SIZE) - 0.5f) * HEIGHT_UNITS_PER_INDEX;
-			}
-			else
-			{
-				// fire at 1 unit above the level of the ground
-				dEndZPos = (FLOAT) ((bLevel * PROFILE_Z_SIZE) * HEIGHT_UNITS_PER_INDEX + 1);
-			}
-		}
-
-		dEndZPos += CONVERT_PIXELS_TO_HEIGHTUNITS( gpWorldLevelData[sGridNo].sHeight );
-
 		// set startsoldier's target ID ... need an ID stored in case this
 		// is the AI calculating cover to a location where he might not be any more
 		pStartSoldier->CTGTTarget = target;
+
+		FLOAT dEndZPos{ GetTargetZPosFromStructureHeight(sGridNo, bLevel, bCubeLevel) };
 		return ChanceToGetThrough(pStartSoldier, sGridNo, dEndZPos);
 	}
 }
@@ -3014,11 +3013,6 @@ UINT8 AISoldierToSoldierChanceToGetThrough(SOLDIERTYPE* const pStartSoldier, con
 
 UINT8 AISoldierToLocationChanceToGetThrough( SOLDIERTYPE * pStartSoldier, INT16 sGridNo, INT8 bLevel, INT8 bCubeLevel )
 {
-	FLOAT dEndZPos;
-
-	UINT16 usTrueState;
-	UINT8 ubChance;
-
 	if (pStartSoldier->sGridNo == sGridNo)
 	{
 		return( 0 );
@@ -3032,27 +3026,8 @@ UINT8 AISoldierToLocationChanceToGetThrough( SOLDIERTYPE * pStartSoldier, INT16 
 	}
 	else
 	{
-		if (bCubeLevel)
-		{
-			// fire at the centre of the cube specified
-			dEndZPos = ( (FLOAT) (bCubeLevel + bLevel * PROFILE_Z_SIZE) - 0.5f) * HEIGHT_UNITS_PER_INDEX;
-		}
-		else
-		{
-			INT8 const bStructHeight = GetStructureTargetHeight(sGridNo, bLevel == 1);
-			if (bStructHeight > 0)
-			{
-				// fire at the centre of the cube of the tallest structure
-				dEndZPos = ((FLOAT) (bStructHeight + bLevel * PROFILE_Z_SIZE) - 0.5f) * HEIGHT_UNITS_PER_INDEX;
-			}
-			else
-			{
-				// fire at 1 unit above the level of the ground
-				dEndZPos = (FLOAT) ((bLevel * PROFILE_Z_SIZE) * HEIGHT_UNITS_PER_INDEX + 1);
-			}
-		}
-
-		dEndZPos += CONVERT_PIXELS_TO_HEIGHTUNITS( gpWorldLevelData[sGridNo].sHeight );
+		UINT16 usTrueState;
+		UINT8 ubChance;
 
 		// set startsoldier's target ID ... need an ID stored in case this
 		// is the AI calculating cover to a location where he might not be any more
@@ -3061,6 +3036,7 @@ UINT8 AISoldierToLocationChanceToGetThrough( SOLDIERTYPE * pStartSoldier, INT16 
 		usTrueState = pStartSoldier->usAnimState;
 		pStartSoldier->usAnimState = STANDING;
 
+		FLOAT dEndZPos{ GetTargetZPosFromStructureHeight(sGridNo, bLevel, bCubeLevel) };
 		ubChance = ChanceToGetThrough(pStartSoldier, sGridNo, dEndZPos);
 
 		pStartSoldier->usAnimState = usTrueState;
@@ -3345,11 +3321,11 @@ INT8 FireBulletGivenTarget(SOLDIERTYPE* const pFirer, const FLOAT dEndX, const F
 
 		if (dStartZ < wallHeightUnits)
 		{
-			pBullet->fCheckForRoof = dEndZ > wallHeightUnits;
+			pBullet->fCheckForRoof = dEndZ > dStartZ;
 		}
-		else // dStartZ >= WALL_HEIGHT_UNITS; presumably >
+		else
 		{
-			pBullet->fCheckForRoof = dEndZ < wallHeightUnits;
+			pBullet->fCheckForRoof = dEndZ < dStartZ;
 		}
 
 		if ( ubLoop == 0 )
