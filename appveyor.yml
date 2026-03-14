@@ -110,7 +110,8 @@ for:
           mingw-w64-ucrt-x86_64-cmake
           mingw-w64-ucrt-x86_64-ninja
           mingw-w64-ucrt-x86_64-rust
-          mingw-w64-ucrt-x86_64-SDL2"
+          mingw-w64-ucrt-x86_64-SDL2
+          mingw-w64-ucrt-x86_64-fltk"
     before_build:
       - cmd: echo "UCRT64 build"
     build_script:
